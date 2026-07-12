@@ -28,6 +28,25 @@ async function getDriveClient() {
   return google.drive({ version: 'v3', auth });
 }
 
+async function transferOwnership(drive, fileId) {
+  const email = process.env.GOOGLE_DRIVE_OWNER_EMAIL;
+  if (!email) return;
+  try {
+    await drive.permissions.create({
+      fileId,
+      transferOwnership: true,
+      requestBody: {
+        role: 'owner',
+        type: 'user',
+        emailAddress: email,
+      },
+      supportsAllDrives: true,
+    });
+  } catch (err) {
+    console.error(`[Drive] Ownership transfer failed for ${fileId}:`, err.message);
+  }
+}
+
 async function getOrCreateFolder(drive, name, parentId) {
   const cacheKey = `${parentId}/${name}`;
   if (folderCache.has(cacheKey)) return folderCache.get(cacheKey);
@@ -50,6 +69,7 @@ async function getOrCreateFolder(drive, name, parentId) {
       supportsAllDrives: true,
     });
     folderId = folder.data.id;
+    await transferOwnership(drive, folderId);
   }
   folderCache.set(cacheKey, folderId);
   return folderId;
@@ -89,6 +109,9 @@ async function uploadToCentralDrive(buffer, { incidentNumber, blockName, flatNum
     requestBody: { role: 'reader', type: 'anyone' },
     supportsAllDrives: true,
   });
+
+  // Transfer ownership to bypass Service Account quota limit
+  await transferOwnership(drive, fileId);
 
   return {
     fileId,

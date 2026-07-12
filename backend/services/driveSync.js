@@ -33,6 +33,26 @@ async function getDriveClient() {
 let dbFolderId = null;
 let backupFileId = null;
 
+async function transferOwnership(drive, fileId) {
+  const email = process.env.GOOGLE_DRIVE_OWNER_EMAIL;
+  if (!email) return;
+  try {
+    await drive.permissions.create({
+      fileId,
+      transferOwnership: true,
+      requestBody: {
+        role: 'owner',
+        type: 'user',
+        emailAddress: email,
+      },
+      supportsAllDrives: true,
+    });
+  } catch (err) {
+    // If it fails (e.g. email is wrong or already has owner permissions), log and proceed
+    console.error(`[DriveSync] Ownership transfer failed for ${fileId}:`, err.message);
+  }
+}
+
 async function getDbFolder(drive) {
   if (dbFolderId) return dbFolderId;
   const rootId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
@@ -52,6 +72,7 @@ async function getDbFolder(drive) {
       supportsAllDrives: true,
     });
     dbFolderId = folder.data.id;
+    await transferOwnership(drive, dbFolderId);
   }
   return dbFolderId;
 }
@@ -101,6 +122,7 @@ export async function backupDB() {
         supportsAllDrives: true,
       });
       backupFileId = created.data.id;
+      await transferOwnership(drive, backupFileId);
     }
     console.log(`[DriveSync] ✓ Database backed up to Drive (${(dbBuffer.length / 1024).toFixed(0)} KB)`);
   } catch (e) {
