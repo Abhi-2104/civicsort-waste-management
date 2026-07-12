@@ -57,15 +57,54 @@ async function getOrCreateFolder(drive, name, parentId) {
   return folderId;
 }
 
+function getISTDateParts(incidentDate) {
+  if (incidentDate) {
+    const [y, m, d] = incidentDate.split('-');
+    const monthIndex = parseInt(m, 10) - 1;
+    return {
+      year: y,
+      month: MONTHS[monthIndex],
+      day: parseInt(d, 10).toString()
+    };
+  }
+
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(new Date());
+  const getValue = type => parts.find(p => p.type === type).value;
+  const monthIndex = parseInt(getValue('month'), 10) - 1;
+
+  return {
+    year: getValue('year'),
+    month: MONTHS[monthIndex],
+    day: parseInt(getValue('day'), 10).toString()
+  };
+}
+
+function getISTTimeStr() {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(new Date());
+  const getValue = type => parts.find(p => p.type === type).value;
+  return `${getValue('hour')}-${getValue('minute')}-${getValue('second')}`;
+}
+
 async function uploadToCentralDrive(buffer, { incidentNumber, blockName, flatNumber, incidentDate, seq }) {
   const drive = getDriveClient();
   const rootId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
 
-  // Build Year → Month → Day folder path
-  const date = incidentDate ? new Date(incidentDate) : new Date();
-  const year  = date.getFullYear().toString();
-  const month = MONTHS[date.getMonth()];
-  const day   = date.getDate().toString();
+  // Build Year → Month → Day folder path using IST
+  const { year, month, day } = getISTDateParts(incidentDate);
 
   const yearId  = await getOrCreateFolder(drive, year,  rootId);
   const monthId = await getOrCreateFolder(drive, month, yearId);
@@ -73,7 +112,7 @@ async function uploadToCentralDrive(buffer, { incidentNumber, blockName, flatNum
 
   // Descriptive filename: INC-2026-000123_BlockA_Flat101_14-30-22_1.jpg
   const safeStr = (s) => (s || '').replace(/[^a-zA-Z0-9]/g, '');
-  const timeStr = new Date().toTimeString().slice(0, 8).replace(/:/g, '-');
+  const timeStr = getISTTimeStr();
   const filename = `${incidentNumber}_${safeStr(blockName)}_${safeStr(flatNumber)}_${timeStr}_${seq}.jpg`;
 
   // Upload
