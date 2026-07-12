@@ -12,6 +12,7 @@ import UsersAdmin from './pages/UsersAdmin';
 import ResidentUpload from './pages/ResidentUpload';
 import Reports from './pages/Reports';
 import Audit from './pages/Audit';
+import DbExplorer from './pages/DbExplorer';
 
 function Protected({ children, roles }) {
   const { user } = useAuth();
@@ -36,6 +37,7 @@ function AppRoutes() {
       <Route path="/upload" element={<Protected roles={['Administrator']}><ResidentUpload /></Protected>} />
       <Route path="/reports" element={<Protected roles={['Administrator', 'Supervisor']}><Reports /></Protected>} />
       <Route path="/audit" element={<Protected roles={['Administrator']}><Audit /></Protected>} />
+      <Route path="/db-explorer" element={<Protected roles={['Administrator']}><DbExplorer /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

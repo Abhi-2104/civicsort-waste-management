@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import {
   LayoutDashboard, ClipboardList, CheckSquare, Building2, Tags, Users,
-  FileBarChart, UploadCloud, ScrollText, LogOut, Search, Bell, Trash2
+  FileBarChart, UploadCloud, ScrollText, LogOut, Search, Bell, Trash2, Database
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
@@ -18,6 +18,7 @@ const NAV = [
     { to: '/categories', label: 'Categories & Rules', icon: Tags, roles: ['Administrator'] },
     { to: '/users', label: 'Users', icon: Users, roles: ['Administrator'] },
     { to: '/upload', label: 'Bulk Resident Upload', icon: UploadCloud, roles: ['Administrator'] },
+    { to: '/db-explorer', label: 'Database Explorer', icon: Database, roles: ['Administrator'] },
   ]},
   { section: 'Insights', items: [
     { to: '/reports', label: 'Reports', icon: FileBarChart, roles: ['Administrator', 'Supervisor'] },
