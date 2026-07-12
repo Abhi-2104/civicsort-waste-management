@@ -40,6 +40,8 @@ async function getDbFolder(drive) {
     q: `name='${DB_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and '${rootId}' in parents and trashed=false`,
     fields: 'files(id)',
     spaces: 'drive',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
   });
   if (res.data.files.length > 0) {
     dbFolderId = res.data.files[0].id;
@@ -47,6 +49,7 @@ async function getDbFolder(drive) {
     const folder = await drive.files.create({
       requestBody: { name: DB_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder', parents: [rootId] },
       fields: 'id',
+      supportsAllDrives: true,
     });
     dbFolderId = folder.data.id;
   }
@@ -59,6 +62,8 @@ async function getBackupFileId(drive, folderId) {
     q: `name='${BACKUP_FILENAME}' and '${folderId}' in parents and trashed=false`,
     fields: 'files(id)',
     spaces: 'drive',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
   });
   if (res.data.files.length > 0) {
     backupFileId = res.data.files[0].id;
@@ -81,6 +86,7 @@ export async function backupDB() {
       await drive.files.update({
         fileId: existingId,
         media: { mimeType: 'application/x-sqlite3', body: Readable.from(dbBuffer) },
+        supportsAllDrives: true,
       });
     } else {
       // First-ever backup — create the file
@@ -92,6 +98,7 @@ export async function backupDB() {
         },
         media: { mimeType: 'application/x-sqlite3', body: Readable.from(dbBuffer) },
         fields: 'id',
+        supportsAllDrives: true,
       });
       backupFileId = created.data.id;
     }
@@ -120,7 +127,7 @@ export async function restoreDB() {
     }
 
     const res = await drive.files.get(
-      { fileId: existingId, alt: 'media' },
+      { fileId: existingId, alt: 'media', supportsAllDrives: true },
       { responseType: 'arraybuffer' }
     );
     fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
