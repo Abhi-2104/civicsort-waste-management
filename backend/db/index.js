@@ -8,7 +8,7 @@ const DB_PATH = path.join(__dirname, 'waste.db');
 
 const isNew = !fs.existsSync(DB_PATH);
 export const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
+db.pragma('journal_mode = DELETE');
 db.pragma('foreign_keys = ON');
 
 const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');

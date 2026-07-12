@@ -74,15 +74,20 @@ async function getBackupFileId(drive, folderId) {
   return backupFileId;
 }
 
-// ── Backup ────────────────────────────────────────────────────────────────────
-
 export async function backupDB() {
   if (!fs.existsSync(DB_PATH)) return;
+  const tempPath = `${DB_PATH}.tmp`;
   try {
+    // Dynamic import to avoid circular dependency on startup restore
+    const { db } = await import('../db/index.js');
+    
+    // Safely copy the active DB to a temporary file using SQLite's backup API
+    await db.backup(tempPath);
+    const dbBuffer = fs.readFileSync(tempPath);
+
     const drive = getDriveClient();
     const folderId = await getDbFolder(drive);
     const existingId = await getBackupFileId(drive, folderId);
-    const dbBuffer = fs.readFileSync(DB_PATH);
 
     if (existingId) {
       // Overwrite the existing backup file in place
@@ -108,6 +113,11 @@ export async function backupDB() {
     console.log(`[DriveSync] ✓ Database backed up to Drive (${(dbBuffer.length / 1024).toFixed(0)} KB)`);
   } catch (e) {
     console.error('[DriveSync] ✗ Backup failed:', e.message);
+  } finally {
+    // Always clean up the temp snapshot file
+    if (fs.existsSync(tempPath)) {
+      try { fs.unlinkSync(tempPath); } catch (err) { /* ignore cleanup errors */ }
+    }
   }
 }
 
