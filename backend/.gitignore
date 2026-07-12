@@ -1,0 +1,11 @@
+node_modules/
+db/waste.db
+db/waste.db-*
+uploads/*
+!uploads/.gitkeep
+!uploads/thumbs/.gitkeep
+.env
+.env.local
+.env.*.local
+*.local
+.DS_Store
