@@ -12,39 +12,22 @@ import { authenticate, authorize, writeAudit } from '../middleware/auth.js';
 import { sendCommunication } from '../services/communication.js';
 import { driveConfigured } from '../services/driveSync.js';
 
-// ---------- Centralized Google Drive upload (Service Account) ----------
+// ---------- Centralized Google Drive upload (OAuth2 Client) ----------
 const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
 
 // In-memory cache of folder IDs so we don't re-query Drive on every photo.
 const folderCache = new Map();
 
-async function getDriveClient() {
-  const keyJson = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
-  const auth = new google.auth.GoogleAuth({
-    credentials: keyJson,
-    scopes: ['https://www.googleapis.com/auth/drive'],
+function getDriveClient() {
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  );
+  oauth2Client.setCredentials({
+    refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
   });
-  return google.drive({ version: 'v3', auth });
-}
-
-async function transferOwnership(drive, fileId) {
-  const email = process.env.GOOGLE_DRIVE_OWNER_EMAIL;
-  if (!email) return;
-  try {
-    await drive.permissions.create({
-      fileId,
-      transferOwnership: true,
-      requestBody: {
-        role: 'owner',
-        type: 'user',
-        emailAddress: email,
-      },
-      supportsAllDrives: true,
-    });
-  } catch (err) {
-    console.error(`[Drive] Ownership transfer failed for ${fileId}:`, err.message);
-  }
+  return google.drive({ version: 'v3', auth: oauth2Client });
 }
 
 async function getOrCreateFolder(drive, name, parentId) {
@@ -69,14 +52,13 @@ async function getOrCreateFolder(drive, name, parentId) {
       supportsAllDrives: true,
     });
     folderId = folder.data.id;
-    await transferOwnership(drive, folderId);
   }
   folderCache.set(cacheKey, folderId);
   return folderId;
 }
 
 async function uploadToCentralDrive(buffer, { incidentNumber, blockName, flatNumber, incidentDate, seq }) {
-  const drive = await getDriveClient();
+  const drive = getDriveClient();
   const rootId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
 
   // Build Year → Month → Day folder path
@@ -109,9 +91,6 @@ async function uploadToCentralDrive(buffer, { incidentNumber, blockName, flatNum
     requestBody: { role: 'reader', type: 'anyone' },
     supportsAllDrives: true,
   });
-
-  // Transfer ownership to bypass Service Account quota limit
-  await transferOwnership(drive, fileId);
 
   return {
     fileId,

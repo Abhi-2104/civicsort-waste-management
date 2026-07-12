@@ -13,45 +13,28 @@ const DB_FOLDER_NAME = 'CivicSort_Database';
 
 export function driveConfigured() {
   return (
-    process.env.GOOGLE_SERVICE_ACCOUNT_KEY &&
-    process.env.GOOGLE_SERVICE_ACCOUNT_KEY !== 'YOUR_SERVICE_ACCOUNT_JSON_HERE' &&
+    process.env.GOOGLE_CLIENT_ID &&
+    process.env.GOOGLE_CLIENT_SECRET &&
+    process.env.GOOGLE_REFRESH_TOKEN &&
     process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID &&
     process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID !== 'YOUR_ROOT_FOLDER_ID_HERE'
   );
 }
 
-async function getDriveClient() {
-  const keyJson = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
-  const auth = new google.auth.GoogleAuth({
-    credentials: keyJson,
-    scopes: ['https://www.googleapis.com/auth/drive'],
+function getDriveClient() {
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  );
+  oauth2Client.setCredentials({
+    refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
   });
-  return google.drive({ version: 'v3', auth });
+  return google.drive({ version: 'v3', auth: oauth2Client });
 }
 
 // In-memory cache so we don't re-query Drive folder IDs on every sync
 let dbFolderId = null;
 let backupFileId = null;
-
-async function transferOwnership(drive, fileId) {
-  const email = process.env.GOOGLE_DRIVE_OWNER_EMAIL;
-  if (!email) return;
-  try {
-    await drive.permissions.create({
-      fileId,
-      transferOwnership: true,
-      requestBody: {
-        role: 'owner',
-        type: 'user',
-        emailAddress: email,
-      },
-      supportsAllDrives: true,
-    });
-  } catch (err) {
-    // If it fails (e.g. email is wrong or already has owner permissions), log and proceed
-    console.error(`[DriveSync] Ownership transfer failed for ${fileId}:`, err.message);
-  }
-}
 
 async function getDbFolder(drive) {
   if (dbFolderId) return dbFolderId;
@@ -72,7 +55,6 @@ async function getDbFolder(drive) {
       supportsAllDrives: true,
     });
     dbFolderId = folder.data.id;
-    await transferOwnership(drive, dbFolderId);
   }
   return dbFolderId;
 }
@@ -97,7 +79,7 @@ async function getBackupFileId(drive, folderId) {
 export async function backupDB() {
   if (!fs.existsSync(DB_PATH)) return;
   try {
-    const drive = await getDriveClient();
+    const drive = getDriveClient();
     const folderId = await getDbFolder(drive);
     const existingId = await getBackupFileId(drive, folderId);
     const dbBuffer = fs.readFileSync(DB_PATH);
@@ -122,7 +104,6 @@ export async function backupDB() {
         supportsAllDrives: true,
       });
       backupFileId = created.data.id;
-      await transferOwnership(drive, backupFileId);
     }
     console.log(`[DriveSync] ✓ Database backed up to Drive (${(dbBuffer.length / 1024).toFixed(0)} KB)`);
   } catch (e) {
@@ -139,7 +120,7 @@ export async function restoreDB() {
   }
   console.log('[DriveSync] No local database found — attempting restore from Drive...');
   try {
-    const drive = await getDriveClient();
+    const drive = getDriveClient();
     const folderId = await getDbFolder(drive);
     const existingId = await getBackupFileId(drive, folderId);
 
@@ -163,10 +144,6 @@ export async function restoreDB() {
 }
 
 // ── Smart Sync Watcher ────────────────────────────────────────────────────────
-// • Polls every 30 seconds
-// • Uploads immediately if the DB file was modified since last backup
-// • Also force-uploads every 5 minutes as a safety heartbeat
-
 export function startSyncWatcher() {
   if (!driveConfigured()) {
     console.log('[DriveSync] Drive not configured — sync disabled (running in local mode).');
