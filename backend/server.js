@@ -11,7 +11,7 @@ dotenv.config();
 // driveSync.js doesn't import the DB, so it's safe to import first.
 // Routes are loaded dynamically AFTER restore so better-sqlite3 opens the
 // already-restored file instead of creating a fresh empty one.
-import { driveConfigured, restoreDB, startSyncWatcher } from './services/driveSync.js';
+import { driveConfigured, restoreDB, startSyncWatcher, testDriveConnection } from './services/driveSync.js';
 if (driveConfigured()) {
   await restoreDB();
 }
@@ -50,6 +50,16 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/upload',    uploadRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+
+app.get('/api/health/drive', async (req, res) => {
+  const status = await testDriveConnection();
+  if (status.ok) {
+    res.json({ ok: true, message: 'Drive connection is healthy' });
+  } else {
+    // Return 502 Bad Gateway or 503 Service Unavailable so monitoring tools alert on it
+    res.status(502).json({ ok: false, error: status.error });
+  }
+});
 
 // Central error handler
 app.use((err, req, res, next) => {

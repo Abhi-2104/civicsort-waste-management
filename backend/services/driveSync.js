@@ -185,3 +185,15 @@ export function startSyncWatcher() {
 
   console.log('[DriveSync] Smart sync watcher started — polls every 30s, uploads on change + every 5min.');
 }
+
+export async function testDriveConnection() {
+  if (!driveConfigured()) return { ok: false, error: 'Drive not configured' };
+  try {
+    const drive = getDriveClient();
+    // A simple lightweight call to check if the token works
+    await drive.about.get({ fields: 'user', supportsAllDrives: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
