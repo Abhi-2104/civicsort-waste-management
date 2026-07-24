@@ -10,7 +10,10 @@ import { google } from 'googleapis';
 import { db, nextSequence } from '../db/index.js';
 import { authenticate, authorize, writeAudit } from '../middleware/auth.js';
 import { sendCommunication } from '../services/communication.js';
+import { maskRow } from '../utils/mask.js';
 import { driveConfigured } from '../services/driveSync.js';
+
+const INCIDENT_LEVELS = ['Community', 'Block', 'Floor', 'Flat'];
 
 // ---------- Centralized Google Drive upload (OAuth2 Client) ----------
 const MONTHS = ['January','February','March','April','May','June',
@@ -151,15 +154,17 @@ const router = express.Router();
 router.use(authenticate);
 
 // ---------- List / filter incidents ----------
+// Community-level incidents have no block/flat; Block-level have a block but
+// no floor/flat; Floor-level have a block+floor but no flat; Flat-level have
+// all three. LEFT JOINs mean the non-applicable columns simply come back null.
 router.get('/', (req, res) => {
-  const { status, block_id, category_id, from, to, maker_id, flat_id, search } = req.query;
+  const { status, block_id, category_id, from, to, maker_id, flat_id, incident_level, floor, search } = req.query;
   let q = `
     SELECT i.*, f.flat_number, b.name as block_name, vc.name as category_name,
-           m.name as maker_name, s.name as supervisor_name, fl_res.resident_name
+           m.name as maker_name, s.name as supervisor_name, f.resident_name
     FROM incidents i
-    JOIN flats f ON f.id = i.flat_id
-    LEFT JOIN flats fl_res ON fl_res.id = i.flat_id
-    JOIN blocks b ON b.id = i.block_id
+    LEFT JOIN flats f ON f.id = i.flat_id
+    LEFT JOIN blocks b ON b.id = i.block_id
     JOIN violation_categories vc ON vc.id = i.category_id
     JOIN users m ON m.id = i.maker_id
     LEFT JOIN users s ON s.id = i.supervisor_id
@@ -171,13 +176,17 @@ router.get('/', (req, res) => {
   if (category_id) { q += ' AND i.category_id=?'; params.push(category_id); }
   if (maker_id) { q += ' AND i.maker_id=?'; params.push(maker_id); }
   if (flat_id) { q += ' AND i.flat_id=?'; params.push(flat_id); }
+  if (incident_level) { q += ' AND i.incident_level=?'; params.push(incident_level); }
+  if (floor) { q += ' AND i.floor=?'; params.push(floor); }
   if (from) { q += ' AND i.incident_date >= ?'; params.push(from); }
   if (to) { q += ' AND i.incident_date <= ?'; params.push(to); }
   if (search) {
-    q += ' AND (f.flat_number LIKE ? OR i.incident_number LIKE ? OR fl_res.resident_name LIKE ?)';
+    q += ' AND (f.flat_number LIKE ? OR i.incident_number LIKE ? OR f.resident_name LIKE ?)';
     params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
   q += ' ORDER BY i.created_at DESC LIMIT 500';
+  // resident_name is not PII per the spec (only mobile/email are masked); this list
+  // never selects mobile_number/email so there is nothing to mask here.
   res.json(db.prepare(q).all(...params));
 });
 
@@ -186,8 +195,8 @@ router.get('/:id', (req, res) => {
     SELECT i.*, f.flat_number, f.resident_name, f.mobile_number, f.email, b.name as block_name,
            vc.name as category_name, m.name as maker_name, s.name as supervisor_name
     FROM incidents i
-    JOIN flats f ON f.id = i.flat_id
-    JOIN blocks b ON b.id = i.block_id
+    LEFT JOIN flats f ON f.id = i.flat_id
+    LEFT JOIN blocks b ON b.id = i.block_id
     JOIN violation_categories vc ON vc.id = i.category_id
     JOIN users m ON m.id = i.maker_id
     LEFT JOIN users s ON s.id = i.supervisor_id
@@ -195,36 +204,80 @@ router.get('/:id', (req, res) => {
   `).get(req.params.id, req.user.communityId);
   if (!incident) return res.status(404).json({ error: 'Incident not found' });
   const photos = db.prepare('SELECT * FROM incident_photos WHERE incident_id=?').all(req.params.id);
-  res.json({ ...incident, photos });
+
+  const wantsUnmask = (req.query.unmask === 'true' || req.query.unmask === '1') && incident.flat_id;
+  if (wantsUnmask) {
+    if (req.user.role !== 'Administrator') {
+      return res.status(403).json({ error: 'Only administrators may view unmasked contact information' });
+    }
+    writeAudit({
+      userId: req.user.id, action: 'REVEAL_PII', entityType: 'flat', entityId: incident.flat_id,
+      details: { via: 'incident_detail', incidentId: incident.id, reason: req.query.reason || null }, ip: req.ip
+    });
+    return res.json({ ...incident, photos }); // real values, unmasked
+  }
+  res.json({ ...maskRow(incident), photos });
 });
 
 // ---------- Capture incident ----------
+// incident_level determines which location fields are mandatory:
+//   Community -> none (block/floor/flat all null)
+//   Block     -> block_id required
+//   Floor     -> block_id + floor required
+//   Flat      -> block_id + flat_id required (floor auto-derived from the flat if not supplied)
 router.post('/', authorize('Administrator', 'Maker'), upload.array('photos', 8), async (req, res) => {
-  const { flat_id, category_id, incident_date, incident_time, gps_lat, gps_lng, remarks } = req.body;
-  if (!flat_id || !category_id || !incident_date) {
-    return res.status(400).json({ error: 'Flat, category, and incident date are required' });
+  const { category_id, incident_date, incident_time, gps_lat, gps_lng, remarks } = req.body;
+  const incidentLevel = req.body.incident_level || 'Flat'; // default keeps old clients (pre-enhancement) working unchanged
+  let { block_id, floor, flat_id } = req.body;
+
+  if (!INCIDENT_LEVELS.includes(incidentLevel)) {
+    return res.status(400).json({ error: 'Incident level must be one of: ' + INCIDENT_LEVELS.join(', ') });
   }
-  const flat = db.prepare('SELECT * FROM flats WHERE id=? AND community_id=?').get(flat_id, req.user.communityId);
-  if (!flat) return res.status(400).json({ error: 'Invalid flat' });
+  if (!category_id || !incident_date) {
+    return res.status(400).json({ error: 'Violation category and incident date are required' });
+  }
+
+  let flat = null;
+  if (incidentLevel === 'Community') {
+    block_id = null; floor = null; flat_id = null;
+  } else if (incidentLevel === 'Block') {
+    if (!block_id) return res.status(400).json({ error: 'Block is required for a Block-level incident' });
+    floor = null; flat_id = null;
+  } else if (incidentLevel === 'Floor') {
+    if (!block_id) return res.status(400).json({ error: 'Block is required for a Floor-level incident' });
+    if (!floor) return res.status(400).json({ error: 'Floor is required for a Floor-level incident' });
+    flat_id = null;
+  } else { // Flat
+    if (!flat_id) return res.status(400).json({ error: 'Flat is required for a Flat-level incident' });
+    flat = db.prepare('SELECT * FROM flats WHERE id=? AND community_id=?').get(flat_id, req.user.communityId);
+    if (!flat) return res.status(400).json({ error: 'Invalid flat' });
+    block_id = flat.block_id; // block is always derived from the flat, never trusted from the client
+    if (!floor) floor = flat.floor || null; // auto-fill from master data when available; not mandatory otherwise
+  }
+
+  if (block_id) {
+    const block = db.prepare('SELECT * FROM blocks WHERE id=? AND community_id=?').get(block_id, req.user.communityId);
+    if (!block) return res.status(400).json({ error: 'Invalid block' });
+  }
 
   const incidentNumber = nextSequence('INC', 'incidents', 'incident_number');
 
   const info = db.prepare(`INSERT INTO incidents
-    (incident_number, community_id, block_id, flat_id, category_id, incident_date, incident_time,
+    (incident_number, community_id, incident_level, block_id, floor, flat_id, category_id, incident_date, incident_time,
      gps_lat, gps_lng, remarks, maker_id, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Approval')`)
-    .run(incidentNumber, req.user.communityId, flat.block_id, flat_id, category_id, incident_date,
-      incident_time || null, gps_lat || null, gps_lng || null, remarks || null, req.user.id);
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Approval')`)
+    .run(incidentNumber, req.user.communityId, incidentLevel, block_id || null, floor || null, flat_id || null,
+      category_id, incident_date, incident_time || null, gps_lat || null, gps_lng || null, remarks || null, req.user.id);
 
   const incidentId = info.lastInsertRowid;
 
   // ---- Photo handling ----
   // 1. Compress with sharp (~100 KB per photo)
-  // 2. Upload to centralized Google Drive (Year/Month/Day/filename) via Service Account
+  // 2. Upload to centralized Google Drive (Year/Month/Day/filename) via OAuth2
   // 3. If Drive is not configured, fall back to local disk (for local dev / demo)
   const files = req.files || [];
   // Fetch block name for the filename
-  const block = db.prepare('SELECT name FROM blocks WHERE id=?').get(flat.block_id);
+  const blockRow = block_id ? db.prepare('SELECT name FROM blocks WHERE id=?').get(block_id) : null;
 
   for (let seq = 0; seq < files.length; seq++) {
     const file = files[seq];
@@ -248,8 +301,8 @@ router.post('/', authorize('Administrator', 'Maker'), upload.array('photos', 8),
       try {
         const result = await uploadToCentralDrive(compressedBuffer, {
           incidentNumber,
-          blockName:  block?.name || 'Unknown',
-          flatNumber: flat.flat_number,
+          blockName:  blockRow?.name || 'Unknown',
+          flatNumber: flat?.flat_number || 'NA',
           incidentDate: incident_date,
           seq: seq + 1,
         });
@@ -298,8 +351,12 @@ router.post('/:id/decision', authorize('Administrator', 'Supervisor'), async (re
     return res.status(400).json({ error: `Incident already decided (status: ${incident.status})` });
   }
 
+  // Warnings, penalties, and resident notification are only meaningful for
+  // Flat-level incidents, which are tied to one resident. Community/Block/Floor
+  // level incidents still go through the same approve/reject/condone workflow,
+  // but approving one does not generate a warning or penalty (per spec).
   let resolution = null;
-  if (decision === 'Approved') {
+  if (decision === 'Approved' && incident.incident_level === 'Flat') {
     resolution = applyWarningPenaltyEngine(incident);
   }
 
@@ -309,10 +366,10 @@ router.post('/:id/decision', authorize('Administrator', 'Supervisor'), async (re
 
   writeAudit({
     userId: req.user.id, action: decision.toUpperCase(), entityType: 'incident', entityId: incident.id,
-    details: { remarks, resolution }, ip: req.ip
+    details: { remarks, resolution, incidentLevel: incident.incident_level }, ip: req.ip
   });
 
-  if (decision === 'Approved') {
+  if (decision === 'Approved' && incident.incident_level === 'Flat') {
     await notifyResident(incident, resolution);
   }
 

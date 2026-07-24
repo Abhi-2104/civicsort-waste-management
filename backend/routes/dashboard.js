@@ -1,6 +1,7 @@
 import express from 'express';
 import { db } from '../db/index.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { maskRows } from '../utils/mask.js';
 
 const router = express.Router();
 router.use(authenticate);
@@ -46,7 +47,14 @@ router.get('/summary', (req, res) => {
     WHERE i.community_id=? GROUP BY vc.name ORDER BY count DESC LIMIT 5
   `).all(communityId);
 
-  res.json({ counts, penaltyStats, blockWise, monthly, topBlocks, topCategories });
+  const levelRows = db.prepare(`
+    SELECT incident_level, COUNT(*) as count FROM incidents WHERE community_id=? GROUP BY incident_level
+  `).all(communityId);
+  const levelDistribution = ['Community', 'Block', 'Floor', 'Flat'].map(level => ({
+    level, count: levelRows.find(r => r.incident_level === level)?.count || 0
+  }));
+
+  res.json({ counts, penaltyStats, blockWise, monthly, topBlocks, topCategories, levelDistribution });
 });
 
 // ---------- Global search ----------
@@ -56,9 +64,9 @@ router.get('/search', (req, res) => {
   const communityId = req.user.communityId;
   const like = `%${q}%`;
 
-  const flats = db.prepare(`SELECT id, flat_number, resident_name, mobile_number FROM flats
+  const flats = maskRows(db.prepare(`SELECT id, flat_number, resident_name, mobile_number FROM flats
     WHERE community_id=? AND (flat_number LIKE ? OR resident_name LIKE ? OR mobile_number LIKE ?) LIMIT 10`)
-    .all(communityId, like, like, like);
+    .all(communityId, like, like, like));
 
   const incidents = db.prepare(`SELECT id, incident_number, incident_date, status FROM incidents
     WHERE community_id=? AND incident_number LIKE ? LIMIT 10`).all(communityId, like);

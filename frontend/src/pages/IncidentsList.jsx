@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Filter } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
-import StatusBadge from '../components/StatusBadge';
+import StatusBadge, { LevelBadge } from '../components/StatusBadge';
 
 export default function IncidentsList({ fixedStatus }) {
   const { user } = useAuth();
@@ -11,7 +11,7 @@ export default function IncidentsList({ fixedStatus }) {
   const [incidents, setIncidents] = useState(null);
   const [blocks, setBlocks] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [filters, setFilters] = useState({ status: fixedStatus || '', block_id: '', category_id: '', search: '' });
+  const [filters, setFilters] = useState({ status: fixedStatus || '', block_id: '', category_id: '', incident_level: '', search: '' });
 
   const load = useCallback(() => {
     const params = { ...filters };
@@ -56,6 +56,13 @@ export default function IncidentsList({ fixedStatus }) {
             <option>Rejected</option>
             <option>Condoned</option>
           </select>
+          <select value={filters.incident_level} onChange={e => setFilters(f => ({ ...f, incident_level: e.target.value }))}>
+            <option value="">All levels</option>
+            <option>Community</option>
+            <option>Block</option>
+            <option>Floor</option>
+            <option>Flat</option>
+          </select>
           <select value={filters.block_id} onChange={e => setFilters(f => ({ ...f, block_id: e.target.value }))}>
             <option value="">All blocks</option>
             {blocks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -74,7 +81,7 @@ export default function IncidentsList({ fixedStatus }) {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Incident #</th><th>Date</th><th>Block</th><th>Flat</th><th>Resident</th>
+                <th>Incident #</th><th>Date</th><th>Level</th><th>Block</th><th>Floor</th><th>Flat</th><th>Resident</th>
                 <th>Category</th><th>Status</th><th>Resolution</th><th>Maker</th>
               </tr>
             </thead>
@@ -83,8 +90,10 @@ export default function IncidentsList({ fixedStatus }) {
                 <tr key={i.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/incidents/${i.id}`)}>
                   <td className="num">{i.incident_number}</td>
                   <td>{i.incident_date}</td>
-                  <td>{i.block_name}</td>
-                  <td>{i.flat_number}</td>
+                  <td><LevelBadge level={i.incident_level} /></td>
+                  <td>{i.block_name || '—'}</td>
+                  <td>{i.floor || '—'}</td>
+                  <td>{i.flat_number || '—'}</td>
                   <td>{i.resident_name || '—'}</td>
                   <td>{i.category_name}</td>
                   <td><StatusBadge status={i.status} /></td>

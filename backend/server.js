@@ -23,7 +23,6 @@ const { default: incidentsRoutes }= await import('./routes/incidents.js');
 const { default: reportsRoutes }  = await import('./routes/reports.js');
 const { default: dashboardRoutes }= await import('./routes/dashboard.js');
 const { default: uploadRoutes }   = await import('./routes/upload.js');
-const { default: dbExplorerRoutes } = await import('./routes/dbExplorer.js');
 
 // ── Step 3: Express app ───────────────────────────────────────────────────────
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -49,7 +48,6 @@ app.use('/api/incidents', incidentsRoutes);
 app.use('/api/reports',   reportsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/upload',    uploadRoutes);
-app.use('/api/db-explorer', dbExplorerRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 

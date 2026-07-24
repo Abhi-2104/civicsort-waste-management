@@ -9,11 +9,59 @@ Login as **admin@demo.com / password123** (see more demo accounts below) once ru
 
 ---
 
-## 1. What's implemented vs. what's scoped out
+## 1. Overview
 
 This was built as a working MVP in one session, not a multi-week team build. Everything
-below is real, running code — not a mockup — but a few of the 17 requested deliverables
+below is real, running code — not a mockup — but a few of the 17 originally requested deliverables
 were deliberately trimmed so the core system could be solid rather than everything being shallow.
+The sections below cover what's implemented, in order: the two enhancements added most recently
+(§1a), then the original MVP scope (§2).
+
+---
+
+## 1a. Enhancement update: multi-level incidents + PII masking
+
+Two enhancements have since been added on top of the original MVP, **fully backward compatible**:
+
+**Multi-level incident capture.** Incidents can now be logged at four levels — Community,
+Block, Floor, or Flat — not just Flat as before:
+- The capture form has an "Incident Level" dropdown that dynamically shows only the location
+  fields that apply (Community shows none, Block shows a block picker, Floor adds a floor field,
+  Flat adds the flat picker — exactly per spec).
+- The database (`incidents.incident_level`, nullable `block_id`/`flat_id`, new `floor` column)
+  and every route, filter, dashboard chart, and report were updated to understand all four levels.
+- **The warning/penalty engine and resident notifications only fire for Flat-level incidents** —
+  Community/Block/Floor incidents go through the identical approve/reject/condone workflow but
+  don't generate a warning or penalty, per the spec's note that this is "unless future enhancements
+  specify otherwise."
+- A new **Consolidated Report** (Reports → Consolidated) rolls up Community → Block → Floor → Flat
+  with totals at every level, expandable in the UI.
+- **Backward compatibility was actually tested, not just claimed**: I built a database matching the
+  pre-enhancement schema (NOT NULL block/flat, no incident_level column), pointed the app's migration
+  logic at it, and confirmed existing incident rows are automatically upgraded in place to
+  `incident_level='Flat'` with zero data loss and no manual migration step required. An old client
+  that never sends `incident_level` at all still gets a valid Flat-level incident (also tested live).
+
+**PII masking.** Mobile numbers and email addresses are masked by default everywhere in the app —
+flats register, incident details, search results, resident history — matching the spec's examples
+exactly (`9876543210` → `98******10`). Administrators get a "reveal" (eye icon) button wherever
+contact info appears; every reveal is written to the audit log with the user, timestamp, and an
+optional reason, and non-administrators get a 403 if they try the underlying endpoint directly.
+
+One data-integrity risk I caught and fixed while building this: the flat-edit form previously
+would have saved the *masked* `98******01` string back to the database as if it were the real
+number the moment an admin opened "Edit" and hit save without touching the phone field. It now
+fetches the real, unmasked value specifically when the edit form opens (itself an audited reveal),
+so the form always edits real data.
+
+*Scope note:* masking is applied at the API response layer to every endpoint that returns
+mobile/email today. CSV exports don't currently include mobile/email columns at all (the incident
+and penalty reports never selected them), so there's nothing to leak there; if you add PII columns
+to an export later, route them through `backend/utils/mask.js` first.
+
+---
+
+## 2. What's implemented vs. what's scoped out (original MVP)
 
 **Fully implemented and tested:**
 - Master configuration (community, blocks/towers, flats) — no code changes needed to configure
@@ -40,7 +88,7 @@ were deliberately trimmed so the core system could be solid rather than everythi
   the single highest-effort/lowest-learning item to fake convincingly, so it's a clean stub instead.
 - **PDF and Excel export** — reports export to CSV (opens in Excel) rather than native `.xlsx`/`.pdf`.
   Real PDF/Excel generation is straightforward to add (see below) but was cut to keep the core engine solid.
-- **Automated tests** — none included. The workflow was manually verified end-to-end (see §5).
+- **Automated tests** — none included. The workflow was manually verified end-to-end (see §6).
 - **Docker/cloud deployment configs** — not included; deployment notes are below but not automated.
 - Resident login, online payment, QR collection, offline mode, AI photo verification — explicitly
   listed as *future enhancements* in the spec, not built, and the schema doesn't block adding them later.
@@ -50,7 +98,7 @@ spreading effort thin across all of them.
 
 ---
 
-## 2. Architecture
+## 3. Architecture
 
 ```
 Browser (React SPA, Vite)
@@ -81,16 +129,17 @@ migrating to PostgreSQL is a schema/driver swap, not a rewrite. See §7 for the 
 
 ---
 
-## 3. Project layout
+## 4. Project layout
 
 ```
 waste-app/
 ├── backend/
 │   ├── db/
-│   │   ├── schema.sql       # full normalized schema (16 tables)
-│   │   ├── index.js         # DB connection + schema init + sequence numbering
-│   │   └── seed.js          # demo community, users, blocks, flats, categories, rules
+│   │   ├── schema.sql       # full normalized schema (16 tables, multi-level incidents)
+│   │   ├── index.js         # DB connection + schema init + migration + sequence numbering
+│   │   └── seed.js          # demo community, users, blocks, flats, categories, rules, sample multi-level incidents
 │   ├── middleware/auth.js   # JWT verification, RBAC, audit logging helper
+│   ├── utils/mask.js        # PII masking (mobile/email) applied at the API response layer
 │   ├── routes/
 │   │   ├── auth.js          # login / logout / me
 │   │   ├── masters.js       # community, blocks, flats, users, categories, penalty rules
@@ -111,7 +160,7 @@ waste-app/
 
 ---
 
-## 4. Running it locally
+## 5. Running it locally
 
 Requires Node.js 18+.
 
@@ -143,7 +192,7 @@ Seed data includes one community ("Green Meadows Residency"), 3 blocks, 5 flats 
 
 ---
 
-## 5. How the warning/penalty engine works (verified)
+## 6. How the warning/penalty engine works (verified)
 
 On `POST /api/incidents/:id/decision` with `decision: "Approved"`:
 1. Look up the active penalty rule for the incident's category (`warnings_before_penalty`, `penalty_amount`).
@@ -161,7 +210,7 @@ the spec's worked example.
 
 ---
 
-## 6. REST API summary
+## 7. REST API summary
 
 All routes except `/api/auth/login` and `/api/health` require `Authorization: Bearer <token>`.
 
@@ -179,7 +228,7 @@ view reports). Write endpoints check role via the `authorize(...)` middleware; u
 
 ---
 
-## 7. Deployment notes
+## 8. Deployment notes
 
 **Moving from SQLite to PostgreSQL:**
 - Swap `better-sqlite3` for `pg`, convert `db.prepare(...).run/get/all` calls to parameterized `pg` queries
@@ -204,7 +253,7 @@ view reports). Write endpoints check role via the `authorize(...)` middleware; u
 
 ---
 
-## 8. Extending this
+## 9. Extending this
 
 - **Real Excel/PDF export**: swap the CSV export in `reports.js` for `exceljs` (Excel) and `pdfkit` or
   a headless-Chrome print (PDF) — the query logic stays identical, only the response serialization changes.

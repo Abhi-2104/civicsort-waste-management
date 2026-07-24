@@ -15,7 +15,7 @@ export default function Dashboard() {
 
   if (!data) return <div className="empty-state">Loading dashboard…</div>;
 
-  const { counts, penaltyStats, blockWise, monthly, topBlocks, topCategories } = data;
+  const { counts, penaltyStats, blockWise, monthly, topBlocks, topCategories, levelDistribution } = data;
 
   return (
     <div>
@@ -94,6 +94,28 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="card card-pad" style={{ marginTop: 16 }}>
+        <h3 style={{ fontSize: 15, marginBottom: 4 }}>Incident level distribution</h3>
+        <p className="field-hint" style={{ marginBottom: 14 }}>How incidents split across the four capture levels — Community, Block, Floor, and Flat.</p>
+        {!levelDistribution || levelDistribution.every(l => l.count === 0) ? (
+          <div className="empty-state">No incidents recorded yet.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={levelDistribution} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" stroke="#E9E7DC" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 11 }} stroke="#8B9A90" allowDecimals={false} />
+              <YAxis type="category" dataKey="level" tick={{ fontSize: 12 }} stroke="#8B9A90" width={80} />
+              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                {levelDistribution.map((entry, i) => (
+                  <Cell key={i} fill={['#2C5B6B', '#6C4F9C', '#B9822B', '#2C6B4A'][i % 4]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   );

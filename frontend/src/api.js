@@ -24,8 +24,6 @@ api.interceptors.response.use(
 
 export function photoUrl(path) {
   if (!path) return '';
-  // Google Drive URLs are already absolute — pass through as-is
-  if (path.startsWith('http://') || path.startsWith('https://')) return path;
   return `${API_BASE}${path}`;
 }
 

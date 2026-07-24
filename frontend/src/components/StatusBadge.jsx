@@ -15,3 +15,20 @@ export default function StatusBadge({ status }) {
   const cls = MAP[status] || 'stamp-condoned';
   return <span className={`stamp ${cls}`}>{status}</span>;
 }
+
+const LEVEL_COLORS = {
+  Community: '#2C5B6B',
+  Block: '#6C4F9C',
+  Floor: '#B9822B',
+  Flat: '#2C6B4A',
+};
+
+export function LevelBadge({ level }) {
+  if (!level) return null;
+  const color = LEVEL_COLORS[level] || 'var(--ink-soft)';
+  return (
+    <span className="chip" style={{ background: `${color}1A`, color, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', fontSize: 10.5, letterSpacing: '0.04em' }}>
+      {level}
+    </span>
+  );
+}

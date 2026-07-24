@@ -20,9 +20,9 @@ const communityId = community.id;
 const insertUser = db.prepare(`INSERT OR IGNORE INTO users (community_id, name, email, mobile_number, password_hash, role_id)
   VALUES (?, ?, ?, ?, ?, ?)`);
 const pw = bcrypt.hashSync('password123', 10);
-insertUser.run(communityId, 'Ananya Rao (Admin)', 'admin@demo.com', '+91-9000000001', pw, roleId('Administrator'));
-insertUser.run(communityId, 'Karthik Iyer (Maker)', 'maker@demo.com', '+91-9000000002', pw, roleId('Maker'));
-insertUser.run(communityId, 'Divya Menon (Supervisor)', 'supervisor@demo.com', '+91-9000000003', pw, roleId('Supervisor'));
+insertUser.run(communityId, 'Ananya Rao (Admin)', 'admin@demo.com', '9000000001', pw, roleId('Administrator'));
+insertUser.run(communityId, 'Karthik Iyer (Maker)', 'maker@demo.com', '9000000002', pw, roleId('Maker'));
+insertUser.run(communityId, 'Divya Menon (Supervisor)', 'supervisor@demo.com', '9000000003', pw, roleId('Supervisor'));
 
 // Blocks
 const insertBlock = db.prepare(`INSERT OR IGNORE INTO blocks (community_id, name, ward, street) VALUES (?, ?, ?, ?)`);
@@ -32,19 +32,20 @@ const blocks = db.prepare('SELECT * FROM blocks WHERE community_id=?').all(commu
 
 // Flats
 const insertFlat = db.prepare(`INSERT OR IGNORE INTO flats
-  (community_id, block_id, flat_number, owner_name, resident_name, mobile_number, email, occupancy_status)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+  (community_id, block_id, floor, flat_number, owner_name, resident_name, mobile_number, email, occupancy_status)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 
+// flat number's leading digit doubles as its floor number (101 -> Floor 1, 201 -> Floor 2, ...)
 const sampleResidents = [
-  ['101', 'R. Suresh Kumar', 'R. Suresh Kumar', '+91-9123456701', 'suresh101@demo.com'],
-  ['102', 'Lakshmi Narayanan', 'Priya Lakshmi', '+91-9123456702', 'priya102@demo.com'],
-  ['201', 'Mohammed Faizal', 'Mohammed Faizal', '+91-9123456703', 'faizal201@demo.com'],
-  ['202', 'Anitha Reddy', 'Anitha Reddy', '+91-9123456704', 'anitha202@demo.com'],
-  ['301', 'Vikram Singh', 'Vikram Singh', '+91-9123456705', 'vikram301@demo.com'],
+  ['101', '1', 'R. Suresh Kumar', 'R. Suresh Kumar', '9123456701', 'suresh101@demo.com'],
+  ['102', '1', 'Lakshmi Narayanan', 'Priya Lakshmi', '9123456702', 'priya102@demo.com'],
+  ['201', '2', 'Mohammed Faizal', 'Mohammed Faizal', '9123456703', 'faizal201@demo.com'],
+  ['202', '2', 'Anitha Reddy', 'Anitha Reddy', '9123456704', 'anitha202@demo.com'],
+  ['301', '3', 'Vikram Singh', 'Vikram Singh', '9123456705', 'vikram301@demo.com'],
 ];
 blocks.forEach(block => {
-  sampleResidents.forEach(([flat, owner, resident, mobile, email]) => {
-    insertFlat.run(communityId, block.id, flat, owner, resident, mobile, email, 'Occupied');
+  sampleResidents.forEach(([flat, floor, owner, resident, mobile, email]) => {
+    insertFlat.run(communityId, block.id, floor, flat, owner, resident, mobile, email, 'Occupied');
   });
 });
 
@@ -79,6 +80,26 @@ insertTpl.run(communityId, 'Email', 'Warning',
 insertTpl.run(communityId, 'Email', 'Penalty',
   'Waste Disposal Penalty - Flat {{flat_number}}',
   'Dear {{resident_name}}, a penalty of Rs.{{penalty_amount}} (Penalty No. {{penalty_number}}) has been levied for {{category_name}} recorded on {{date}} at Flat {{flat_number}}. Remarks: {{remarks}}.');
+
+// Sample multi-level incidents (Community / Block / Floor) so the new
+// hierarchy has something to show immediately after seeding. Flat-level
+// incidents are still created interactively through the app, as before.
+const makerId = db.prepare(`SELECT id FROM users WHERE email='maker@demo.com'`).get().id;
+const mixedWasteCatId = catId('Mixed Waste Disposal');
+const blockA = blocks.find(b => b.name === 'Block A');
+
+const insertIncident = db.prepare(`INSERT OR IGNORE INTO incidents
+  (incident_number, community_id, incident_level, block_id, floor, flat_id, category_id,
+   incident_date, incident_time, remarks, maker_id, status)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Approval')`);
+
+const seedIncidentDate = today;
+insertIncident.run('INC-DEMO-COMMUNITY-1', communityId, 'Community', null, null, null, mixedWasteCatId,
+  seedIncidentDate, '09:00', 'Garbage dumped near the clubhouse entrance overnight.', makerId);
+insertIncident.run('INC-DEMO-BLOCK-1', communityId, 'Block', blockA.id, null, null, mixedWasteCatId,
+  seedIncidentDate, '10:15', 'Waste bags left in Block A lobby, not collected.', makerId);
+insertIncident.run('INC-DEMO-FLOOR-1', communityId, 'Floor', blockA.id, '2', null, mixedWasteCatId,
+  seedIncidentDate, '11:30', 'Mixed waste found in the Floor 2 corridor of Block A.', makerId);
 
 console.log('Seed complete.');
 console.log('Login users (password: password123):');

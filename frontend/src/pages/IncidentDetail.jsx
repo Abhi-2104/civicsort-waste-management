@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin } from 'lucide-react';
+import { ArrowLeft, MapPin, Eye, EyeOff } from 'lucide-react';
 import { api, photoUrl, apiErrorMessage } from '../api';
 import { useAuth } from '../context/AuthContext';
-import StatusBadge from '../components/StatusBadge';
+import StatusBadge, { LevelBadge } from '../components/StatusBadge';
+
+function locationSummary(incident) {
+  switch (incident.incident_level) {
+    case 'Community': return 'Community-wide';
+    case 'Block': return incident.block_name;
+    case 'Floor': return `${incident.block_name} · Floor ${incident.floor}`;
+    case 'Flat':
+    default: return `Flat ${incident.flat_number}, ${incident.block_name}`;
+  }
+}
 
 export default function IncidentDetail() {
   const { id } = useParams();
@@ -14,12 +24,15 @@ export default function IncidentDetail() {
   const [remarks, setRemarks] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [revealed, setRevealed] = useState(null);
+  const [revealing, setRevealing] = useState(false);
 
   const load = () => api.get(`/incidents/${id}`).then(res => setIncident(res.data));
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => { load(); setRevealed(null); }, [id]);
 
   const canDecide = (user.role === 'Administrator' || user.role === 'Supervisor')
     && incident && incident.status === 'Pending Approval';
+  const isFlatLevel = incident && incident.incident_level === 'Flat';
 
   async function decide(decision) {
     setError('');
@@ -31,6 +44,19 @@ export default function IncidentDetail() {
       setError(apiErrorMessage(err, 'Could not record this decision'));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function toggleReveal() {
+    if (revealed) { setRevealed(null); return; }
+    setRevealing(true);
+    try {
+      const res = await api.get(`/incidents/${id}`, { params: { unmask: true } });
+      setRevealed({ mobile_number: res.data.mobile_number, email: res.data.email });
+    } catch (err) {
+      // leave masked on failure
+    } finally {
+      setRevealing(false);
     }
   }
 
@@ -46,9 +72,10 @@ export default function IncidentDetail() {
         <div>
           <div className="eyebrow mono">{incident.incident_number}</div>
           <h1>{incident.category_name}</h1>
-          <p className="desc">Flat {incident.flat_number}, {incident.block_name} · {incident.incident_date} {incident.incident_time || ''}</p>
+          <p className="desc">{locationSummary(incident)} · {incident.incident_date} {incident.incident_time || ''}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <LevelBadge level={incident.incident_level} />
           <StatusBadge status={incident.status} />
           {incident.resolution && <StatusBadge status={incident.resolution} />}
         </div>
@@ -57,10 +84,34 @@ export default function IncidentDetail() {
       <div className="grid-2">
         <div className="card card-pad">
           <h3 style={{ fontSize: 14, marginBottom: 12 }}>Details</h3>
-          <DetailRow label="Resident" value={incident.resident_name || 'Not on file'} />
-          <DetailRow label="Contact" value={`${incident.mobile_number || '—'} · ${incident.email || '—'}`} />
+          <DetailRow label="Level" value={<LevelBadge level={incident.incident_level} />} />
+          {incident.block_name && <DetailRow label="Block" value={incident.block_name} />}
+          {incident.floor && <DetailRow label="Floor" value={incident.floor} />}
+          {incident.flat_number && <DetailRow label="Flat" value={incident.flat_number} />}
+          {isFlatLevel && (
+            <>
+              <DetailRow label="Resident" value={incident.resident_name || 'Not on file'} />
+              <DetailRow
+                label="Contact"
+                value={
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span className="mono" style={{ fontSize: 12.5 }}>
+                      {revealed ? `${revealed.mobile_number || '—'} · ${revealed.email || '—'}` : `${incident.mobile_number || '—'} · ${incident.email || '—'}`}
+                    </span>
+                    {user.role === 'Administrator' && (
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ padding: 2 }}
+                        title={revealed ? 'Hide contact details' : 'Reveal contact details (logged to audit trail)'}
+                        onClick={toggleReveal} disabled={revealing}>
+                        {revealing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : (revealed ? <EyeOff size={13} /> : <Eye size={13} />)}
+                      </button>
+                    )}
+                  </span>
+                }
+              />
+            </>
+          )}
           <DetailRow label="Captured by" value={incident.maker_name} />
-          <DetailRow label="Maker remarks" value={incident.remarks || '—'} />
+          <DetailRow label={isFlatLevel ? 'Maker remarks' : 'Description'} value={incident.remarks || '—'} />
           {incident.gps_lat && (
             <DetailRow label="GPS" value={<span><MapPin size={12} style={{ verticalAlign: -2 }} /> {incident.gps_lat}, {incident.gps_lng}</span>} />
           )}
@@ -103,7 +154,9 @@ export default function IncidentDetail() {
             <button className="btn btn-outline" disabled={busy} onClick={() => decide('Condoned')}>Condone</button>
           </div>
           <p className="field-hint" style={{ marginTop: 10 }}>
-            Approving checks this flat's prior approved history for this category and automatically issues a warning or a penalty per the configured rule.
+            {isFlatLevel
+              ? "Approving checks this flat's prior approved history for this category and automatically issues a warning or a penalty per the configured rule."
+              : `${incident.incident_level}-level incidents follow the same approval workflow, but — as they aren't tied to a single resident — approving one does not generate a warning or penalty.`}
           </p>
         </div>
       )}

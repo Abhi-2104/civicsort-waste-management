@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import {
   LayoutDashboard, ClipboardList, CheckSquare, Building2, Tags, Users,
-  FileBarChart, UploadCloud, ScrollText, LogOut, Search, Bell, Trash2, Database, Menu, X
+  FileBarChart, UploadCloud, ScrollText, LogOut, Search, Bell, Trash2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
@@ -18,7 +18,6 @@ const NAV = [
     { to: '/categories', label: 'Categories & Rules', icon: Tags, roles: ['Administrator'] },
     { to: '/users', label: 'Users', icon: Users, roles: ['Administrator'] },
     { to: '/upload', label: 'Bulk Resident Upload', icon: UploadCloud, roles: ['Administrator'] },
-    { to: '/db-explorer', label: 'Database Explorer', icon: Database, roles: ['Administrator'] },
   ]},
   { section: 'Insights', items: [
     { to: '/reports', label: 'Reports', icon: FileBarChart, roles: ['Administrator', 'Supervisor'] },
@@ -37,7 +36,6 @@ export default function Layout({ children }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
   const [showResults, setShowResults] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const boxRef = useRef(null);
 
   useEffect(() => {
@@ -65,23 +63,14 @@ export default function Layout({ children }) {
   }, [query]);
 
   return (
-    <div className={`app-shell ${mobileMenuOpen ? 'mobile-menu-active' : ''}`}>
-      {/* Mobile Drawer Backdrop */}
-      {mobileMenuOpen && (
-        <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)} />
-      )}
-
-      <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
+    <div className="app-shell">
+      <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="mark"><Trash2 size={16} /></div>
           <div>
             <div className="name">CivicSort</div>
             <div className="sub">Compliance Console</div>
           </div>
-          {/* Mobile Close Button */}
-          <button className="sidebar-close-btn" onClick={() => setMobileMenuOpen(false)}>
-            <X size={18} />
-          </button>
         </div>
         {NAV.map(section => {
           const visibleItems = section.items.filter(i => i.roles.includes(user.role));
@@ -90,13 +79,8 @@ export default function Layout({ children }) {
             <div key={section.section}>
               <div className="nav-section-label">{section.section}</div>
               {visibleItems.map(item => (
-                <NavLink 
-                  key={item.to} 
-                  to={item.to} 
-                  end={item.to === '/'}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
-                >
+                <NavLink key={item.to} to={item.to} end={item.to === '/'}
+                  className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
                   <item.icon size={16} />
                   {item.label}
                   {item.notifyKey === 'pending' && pendingCount > 0 && <span className="badge">{pendingCount}</span>}
@@ -106,54 +90,46 @@ export default function Layout({ children }) {
           );
         })}
         <div style={{ marginTop: 'auto', paddingTop: 12 }}>
-          <button className="nav-link" onClick={() => { setMobileMenuOpen(false); logout(); }}><LogOut size={16} /> Sign out</button>
+          <button className="nav-link" onClick={logout}><LogOut size={16} /> Sign out</button>
         </div>
       </aside>
 
       <div className="main-area">
         <div className="topbar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {/* Mobile Burger Menu Button */}
-            <button className="mobile-menu-toggle-btn" onClick={() => setMobileMenuOpen(true)}>
-              <Menu size={20} />
-            </button>
-
-            <div className="search-box" ref={boxRef} style={{ position: 'relative' }}>
-              <Search size={15} color="var(--ink-soft)" />
-              <input
-                placeholder="Search flat, incident #, penalty #..."
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                onFocus={() => results && setShowResults(true)}
-              />
-              {showResults && results && (
-                <div className="card" style={{ position: 'absolute', top: 40, left: 0, right: 0, zIndex: 20, padding: 8, maxHeight: 320, overflowY: 'auto' }}>
-                  {results.flats.length === 0 && results.incidents.length === 0 && results.penalties.length === 0 && (
-                    <div style={{ padding: 10, fontSize: 12.5, color: 'var(--ink-soft)' }}>No matches found.</div>
-                  )}
-                  {results.flats.map(f => (
-                    <div key={'f' + f.id} style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13 }}
-                      onClick={() => { navigate(`/masters?flat=${f.id}`); setShowResults(false); setQuery(''); }}>
-                      <b>Flat {f.flat_number}</b> — {f.resident_name || 'Unassigned'} <span className="text-muted">({f.mobile_number})</span>
-                    </div>
-                  ))}
-                  {results.incidents.map(i => (
-                    <div key={'i' + i.id} style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13 }}
-                      onClick={() => { navigate(`/incidents/${i.id}`); setShowResults(false); setQuery(''); }}>
-                      <span className="mono">{i.incident_number}</span> — {i.status}
-                    </div>
-                  ))}
-                  {results.penalties.map(p => (
-                    <div key={'p' + p.id} style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13 }}
-                      onClick={() => { navigate('/reports'); setShowResults(false); setQuery(''); }}>
-                      <span className="mono">{p.penalty_number}</span> — ₹{p.penalty_amount} ({p.status})
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+          <div className="search-box" ref={boxRef} style={{ position: 'relative' }}>
+            <Search size={15} color="var(--ink-soft)" />
+            <input
+              placeholder="Search flat, incident #, penalty #..."
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onFocus={() => results && setShowResults(true)}
+            />
+            {showResults && results && (
+              <div className="card" style={{ position: 'absolute', top: 40, left: 0, right: 0, zIndex: 20, padding: 8, maxHeight: 320, overflowY: 'auto' }}>
+                {results.flats.length === 0 && results.incidents.length === 0 && results.penalties.length === 0 && (
+                  <div style={{ padding: 10, fontSize: 12.5, color: 'var(--ink-soft)' }}>No matches found.</div>
+                )}
+                {results.flats.map(f => (
+                  <div key={'f' + f.id} style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13 }}
+                    onClick={() => { navigate(`/masters?flat=${f.id}`); setShowResults(false); setQuery(''); }}>
+                    <b>Flat {f.flat_number}</b> — {f.resident_name || 'Unassigned'} <span className="text-muted">({f.mobile_number})</span>
+                  </div>
+                ))}
+                {results.incidents.map(i => (
+                  <div key={'i' + i.id} style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13 }}
+                    onClick={() => { navigate(`/incidents/${i.id}`); setShowResults(false); setQuery(''); }}>
+                    <span className="mono">{i.incident_number}</span> — {i.status}
+                  </div>
+                ))}
+                {results.penalties.map(p => (
+                  <div key={'p' + p.id} style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13 }}
+                    onClick={() => { navigate('/reports'); setShowResults(false); setQuery(''); }}>
+                    <span className="mono">{p.penalty_number}</span> — ₹{p.penalty_amount} ({p.status})
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          
           <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
             <div style={{ position: 'relative' }}>
               <Bell size={17} color="var(--ink-soft)" />
@@ -163,7 +139,7 @@ export default function Layout({ children }) {
             </div>
             <div className="user-chip">
               <div className="avatar">{initials(user.name)}</div>
-              <div className="user-meta">
+              <div>
                 <div>{user.name}</div>
                 <div className="role-pill">{user.role}</div>
               </div>

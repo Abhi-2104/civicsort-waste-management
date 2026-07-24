@@ -44,13 +44,13 @@ export default function Login() {
         <form onSubmit={submit}>
           <div className="field">
             <label>Email</label>
-            <input id="email-input" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoFocus />
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoFocus />
           </div>
           <div className="field">
             <label>Password</label>
-            <input id="password-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required />
           </div>
-          <button id="email-signin-btn" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 6 }} disabled={loading}>
+          <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 6 }} disabled={loading}>
             {loading ? <span className="spinner" /> : 'Sign in'}
           </button>
         </form>

@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS flats (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   community_id INTEGER NOT NULL REFERENCES communities(id),
   block_id INTEGER NOT NULL REFERENCES blocks(id),
+  floor TEXT,                    -- optional: floor this flat sits on, used to auto-fill Flat-level incidents
   flat_number TEXT NOT NULL,
   owner_name TEXT,
   resident_name TEXT,
@@ -80,8 +81,10 @@ CREATE TABLE IF NOT EXISTS incidents (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   incident_number TEXT NOT NULL UNIQUE,
   community_id INTEGER NOT NULL REFERENCES communities(id),
-  block_id INTEGER NOT NULL REFERENCES blocks(id),
-  flat_id INTEGER NOT NULL REFERENCES flats(id),
+  incident_level TEXT NOT NULL DEFAULT 'Flat',  -- Community / Block / Floor / Flat
+  block_id INTEGER REFERENCES blocks(id),        -- nullable: not applicable at Community level
+  floor TEXT,                                    -- nullable: only applicable at Floor and Flat level
+  flat_id INTEGER REFERENCES flats(id),           -- nullable: only applicable at Flat level
   category_id INTEGER NOT NULL REFERENCES violation_categories(id),
   incident_date TEXT NOT NULL,
   incident_time TEXT,
@@ -162,8 +165,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_incidents_flat ON incidents(flat_id);
-CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
-CREATE INDEX IF NOT EXISTS idx_incidents_category ON incidents(category_id);
-CREATE INDEX IF NOT EXISTS idx_flats_block ON flats(block_id);
-CREATE INDEX IF NOT EXISTS idx_penalties_flat ON penalties(flat_id);
+-- Indexes are created in db/index.js, after migration runs, so that a
+-- pre-enhancement database (which lacks incidents.incident_level until
+-- migrated) never hits "CREATE INDEX ... on incident_level" before that
+-- column exists.

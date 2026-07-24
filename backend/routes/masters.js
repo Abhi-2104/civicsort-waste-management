@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import { db } from '../db/index.js';
 import { authenticate, authorize, writeAudit } from '../middleware/auth.js';
+import { maskRow, maskRows } from '../utils/mask.js';
 
 const router = express.Router();
 router.use(authenticate);
@@ -48,6 +49,10 @@ router.put('/blocks/:id', authorize('Administrator'), (req, res) => {
 });
 
 // ---------- Flats ----------
+// Mobile number and email are masked by default everywhere, per the privacy
+// enhancement. Administrators can reveal a specific flat's real contact
+// details via GET /flats/:id?unmask=true — every reveal is written to the
+// audit log with the requesting user, timestamp, and optional reason.
 router.get('/flats', (req, res) => {
   const { block_id, search } = req.query;
   let q = `SELECT f.*, b.name as block_name FROM flats f JOIN blocks b ON b.id=f.block_id WHERE f.community_id=?`;
@@ -58,31 +63,50 @@ router.get('/flats', (req, res) => {
     params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
   q += ' ORDER BY b.name, f.flat_number';
-  res.json(db.prepare(q).all(...params));
+  res.json(maskRows(db.prepare(q).all(...params)));
+});
+
+router.get('/flats/:id', (req, res) => {
+  const flat = db.prepare(`SELECT f.*, b.name as block_name FROM flats f JOIN blocks b ON b.id=f.block_id
+    WHERE f.id=? AND f.community_id=?`).get(req.params.id, req.user.communityId);
+  if (!flat) return res.status(404).json({ error: 'Flat not found' });
+
+  const wantsUnmask = req.query.unmask === 'true' || req.query.unmask === '1';
+  if (wantsUnmask) {
+    if (req.user.role !== 'Administrator') {
+      return res.status(403).json({ error: 'Only administrators may view unmasked contact information' });
+    }
+    writeAudit({
+      userId: req.user.id, action: 'REVEAL_PII', entityType: 'flat', entityId: flat.id,
+      details: { reason: req.query.reason || null, fields: ['mobile_number', 'email'] }, ip: req.ip
+    });
+    return res.json(flat); // real values, unmasked
+  }
+  res.json(maskRow(flat));
 });
 
 router.post('/flats', authorize('Administrator'), (req, res) => {
-  const { block_id, flat_number, owner_name, resident_name, mobile_number, email, occupancy_status } = req.body;
+  const { block_id, floor, flat_number, owner_name, resident_name, mobile_number, email, occupancy_status } = req.body;
   if (!block_id || !flat_number) return res.status(400).json({ error: 'Block and flat number are required' });
   try {
     const info = db.prepare(`INSERT INTO flats
-      (community_id, block_id, flat_number, owner_name, resident_name, mobile_number, email, occupancy_status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(req.user.communityId, block_id, flat_number, owner_name, resident_name, mobile_number, email, occupancy_status || 'Occupied');
+      (community_id, block_id, floor, flat_number, owner_name, resident_name, mobile_number, email, occupancy_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(req.user.communityId, block_id, floor || null, flat_number, owner_name, resident_name, mobile_number, email, occupancy_status || 'Occupied');
     writeAudit({ userId: req.user.id, action: 'CREATE', entityType: 'flat', entityId: info.lastInsertRowid, ip: req.ip });
-    res.status(201).json(db.prepare('SELECT * FROM flats WHERE id=?').get(info.lastInsertRowid));
+    res.status(201).json(maskRow(db.prepare('SELECT * FROM flats WHERE id=?').get(info.lastInsertRowid)));
   } catch (e) {
     res.status(400).json({ error: 'This flat number already exists in the selected block' });
   }
 });
 
 router.put('/flats/:id', authorize('Administrator'), (req, res) => {
-  const { owner_name, resident_name, mobile_number, email, occupancy_status, is_active } = req.body;
-  db.prepare(`UPDATE flats SET owner_name=?, resident_name=?, mobile_number=?, email=?, occupancy_status=?, is_active=?, updated_at=datetime('now')
+  const { owner_name, resident_name, mobile_number, email, occupancy_status, is_active, floor } = req.body;
+  db.prepare(`UPDATE flats SET owner_name=?, resident_name=?, mobile_number=?, email=?, occupancy_status=?, is_active=?, floor=?, updated_at=datetime('now')
     WHERE id=? AND community_id=?`)
-    .run(owner_name, resident_name, mobile_number, email, occupancy_status, is_active ? 1 : 0, req.params.id, req.user.communityId);
+    .run(owner_name, resident_name, mobile_number, email, occupancy_status, is_active ? 1 : 0, floor || null, req.params.id, req.user.communityId);
   writeAudit({ userId: req.user.id, action: 'UPDATE', entityType: 'flat', entityId: req.params.id, ip: req.ip });
-  res.json(db.prepare('SELECT * FROM flats WHERE id=?').get(req.params.id));
+  res.json(maskRow(db.prepare('SELECT * FROM flats WHERE id=?').get(req.params.id)));
 });
 
 // ---------- Users ----------

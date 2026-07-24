@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Plus, Eye, EyeOff } from 'lucide-react';
 import { api, apiErrorMessage } from '../api';
 
 export default function Masters() {
@@ -130,9 +130,12 @@ function FlatsTab({ highlightFlat }) {
   const [blocks, setBlocks] = useState([]);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ block_id: '', flat_number: '', owner_name: '', resident_name: '', mobile_number: '', email: '', occupancy_status: 'Occupied' });
+  const [form, setForm] = useState({ block_id: '', floor: '', flat_number: '', owner_name: '', resident_name: '', mobile_number: '', email: '', occupancy_status: 'Occupied' });
   const [editing, setEditing] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
   const [error, setError] = useState('');
+  const [revealedMap, setRevealedMap] = useState({}); // { [flatId]: { mobile_number, email } }
+  const [revealingId, setRevealingId] = useState(null);
 
   const load = () => api.get('/masters/flats', { params: search ? { search } : {} }).then(res => setFlats(res.data));
   useEffect(() => { load(); }, [search]);
@@ -143,10 +146,26 @@ function FlatsTab({ highlightFlat }) {
     setError('');
     try {
       await api.post('/masters/flats', form);
-      setForm({ block_id: '', flat_number: '', owner_name: '', resident_name: '', mobile_number: '', email: '', occupancy_status: 'Occupied' });
+      setForm({ block_id: '', floor: '', flat_number: '', owner_name: '', resident_name: '', mobile_number: '', email: '', occupancy_status: 'Occupied' });
       setShowForm(false);
       load();
     } catch (err) { setError(apiErrorMessage(err)); }
+  }
+
+  // Editing needs the real contact details, not the masked list values — otherwise
+  // saving the form unchanged would overwrite the resident's real mobile/email with
+  // literal asterisks. Fetching the single-flat unmasked view is Administrator-only
+  // and is written to the audit log by the backend.
+  async function openEdit(flat) {
+    setEditLoading(true);
+    try {
+      const res = await api.get(`/masters/flats/${flat.id}`, { params: { unmask: true, reason: 'Editing flat record' } });
+      setEditing(res.data);
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Could not load this flat for editing'));
+    } finally {
+      setEditLoading(false);
+    }
   }
 
   async function saveEdit(e) {
@@ -154,6 +173,22 @@ function FlatsTab({ highlightFlat }) {
     await api.put(`/masters/flats/${editing.id}`, editing);
     setEditing(null);
     load();
+  }
+
+  async function toggleReveal(flat) {
+    if (revealedMap[flat.id]) {
+      setRevealedMap(m => { const n = { ...m }; delete n[flat.id]; return n; });
+      return;
+    }
+    setRevealingId(flat.id);
+    try {
+      const res = await api.get(`/masters/flats/${flat.id}`, { params: { unmask: true, reason: 'Viewing contact in flats register' } });
+      setRevealedMap(m => ({ ...m, [flat.id]: { mobile_number: res.data.mobile_number, email: res.data.email } }));
+    } catch (err) {
+      // stay masked on failure
+    } finally {
+      setRevealingId(null);
+    }
   }
 
   return (
@@ -177,6 +212,10 @@ function FlatsTab({ highlightFlat }) {
               <input value={form.flat_number} onChange={e => setForm(f => ({ ...f, flat_number: e.target.value }))} required />
             </div>
           </div>
+          <div className="field">
+            <label>Floor <span className="text-muted" style={{ fontWeight: 400 }}>(optional — auto-fills Flat-level incident capture)</span></label>
+            <input value={form.floor} onChange={e => setForm(f => ({ ...f, floor: e.target.value }))} placeholder="e.g. 1, 2, Ground" />
+          </div>
           <div className="field-row">
             <div className="field"><label>Owner name</label><input value={form.owner_name} onChange={e => setForm(f => ({ ...f, owner_name: e.target.value }))} /></div>
             <div className="field"><label>Resident name</label><input value={form.resident_name} onChange={e => setForm(f => ({ ...f, resident_name: e.target.value }))} /></div>
@@ -198,16 +237,26 @@ function FlatsTab({ highlightFlat }) {
       <div className="card">
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th>Block</th><th>Flat</th><th>Resident</th><th>Mobile</th><th>Email</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Block</th><th>Floor</th><th>Flat</th><th>Resident</th><th>Mobile</th><th>Email</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {flats && flats.map(f => (
-                <tr key={f.id} style={{ background: String(f.id) === highlightFlat ? 'var(--primary-tint)' : undefined }}>
-                  <td>{f.block_name}</td><td>{f.flat_number}</td><td>{f.resident_name || '—'}</td>
-                  <td>{f.mobile_number || '—'}</td><td>{f.email || '—'}</td>
-                  <td><span className="chip">{f.occupancy_status}</span></td>
-                  <td><button className="btn btn-ghost btn-sm" onClick={() => setEditing(f)}>Edit</button></td>
-                </tr>
-              ))}
+              {flats && flats.map(f => {
+                const revealed = revealedMap[f.id];
+                return (
+                  <tr key={f.id} style={{ background: String(f.id) === highlightFlat ? 'var(--primary-tint)' : undefined }}>
+                    <td>{f.block_name}</td><td>{f.floor || '—'}</td><td>{f.flat_number}</td><td>{f.resident_name || '—'}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>{revealed ? (revealed.mobile_number || '—') : (f.mobile_number || '—')}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>{revealed ? (revealed.email || '—') : (f.email || '—')}</td>
+                    <td><span className="chip">{f.occupancy_status}</span></td>
+                    <td style={{ display: 'flex', gap: 4 }}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => openEdit(f)} disabled={editLoading}>Edit</button>
+                      <button className="btn btn-ghost btn-sm" title={revealed ? 'Hide contact details' : 'Reveal contact details (logged to audit trail)'}
+                        onClick={() => toggleReveal(f)} disabled={revealingId === f.id}>
+                        {revealingId === f.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : (revealed ? <EyeOff size={13} /> : <Eye size={13} />)}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {flats && flats.length === 0 && <div className="empty-state">No flats found.</div>}
@@ -222,10 +271,15 @@ function FlatsTab({ highlightFlat }) {
               <div className="field"><label>Owner name</label><input value={editing.owner_name || ''} onChange={e => setEditing(f => ({ ...f, owner_name: e.target.value }))} /></div>
               <div className="field"><label>Resident name</label><input value={editing.resident_name || ''} onChange={e => setEditing(f => ({ ...f, resident_name: e.target.value }))} /></div>
             </div>
+            <div className="field">
+              <label>Floor</label>
+              <input value={editing.floor || ''} onChange={e => setEditing(f => ({ ...f, floor: e.target.value }))} placeholder="e.g. 1, 2, Ground" />
+            </div>
             <div className="field-row">
               <div className="field"><label>Mobile</label><input value={editing.mobile_number || ''} onChange={e => setEditing(f => ({ ...f, mobile_number: e.target.value }))} /></div>
               <div className="field"><label>Email</label><input value={editing.email || ''} onChange={e => setEditing(f => ({ ...f, email: e.target.value }))} /></div>
             </div>
+            <p className="field-hint" style={{ marginTop: -8 }}>These are the real, unmasked values — visible here because opening this form is logged to the audit trail.</p>
             <div className="field">
               <label>Occupancy status</label>
               <select value={editing.occupancy_status} onChange={e => setEditing(f => ({ ...f, occupancy_status: e.target.value }))}>
