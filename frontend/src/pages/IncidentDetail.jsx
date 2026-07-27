@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, MapPin, Eye, EyeOff, X, ZoomIn } from 'lucide-react';
 import { api, photoUrl, apiErrorMessage } from '../api';
 import { useAuth } from '../context/AuthContext';
 import StatusBadge, { LevelBadge } from '../components/StatusBadge';
@@ -130,10 +130,15 @@ export default function IncidentDetail() {
           {incident.photos.length === 0 ? (
             <div className="empty-state">No photos were attached.</div>
           ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
               {incident.photos.map(p => (
-                <img key={p.id} src={photoUrl(p.thumb_path)} className="photo-thumb" alt=""
-                  onClick={() => setLightbox(photoUrl(p.file_path))} />
+                <div
+                  key={p.id}
+                  style={{ position: 'relative', cursor: 'pointer', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}
+                  onClick={() => setLightbox(p)}
+                >
+                  <img src={photoUrl(p.thumb_path)} className="photo-thumb" alt="" />
+                </div>
               ))}
             </div>
           )}
@@ -162,8 +167,51 @@ export default function IncidentDetail() {
       )}
 
       {lightbox && (
-        <div className="modal-overlay" onClick={() => setLightbox(null)}>
-          <img src={lightbox} alt="" style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 10 }} />
+        <div
+          className="modal-overlay"
+          style={{ background: 'rgba(15, 23, 18, 0.82)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', zIndex: 100 }}
+          onClick={() => setLightbox(null)}
+        >
+          <div
+            style={{
+              position: 'relative',
+              background: '#16241C',
+              borderRadius: 14,
+              padding: 12,
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              boxShadow: '0 24px 60px rgba(0,0,0,0.5)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              overflow: 'hidden',
+              animation: 'popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '4px 8px 10px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+              <span style={{ color: '#DCE7DF', fontSize: 13, fontWeight: 500, fontFamily: 'var(--font-mono)' }}>
+                {lightbox.original_name || incident.incident_number}
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ color: '#fff', padding: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyControl: 'center' }}
+                onClick={() => setLightbox(null)}
+                title="Close image"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ marginTop: 10, display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', borderRadius: 8 }}>
+              <img
+                src={photoUrl(lightbox.file_path || lightbox.thumb_path)}
+                alt=""
+                style={{ maxWidth: '85vw', maxHeight: '75vh', objectFit: 'contain', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)' }}
+              />
+            </div>
+          </div>
         </div>
       )}
     </div>

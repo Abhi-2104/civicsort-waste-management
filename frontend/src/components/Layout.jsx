@@ -104,7 +104,7 @@ export default function Layout({ children }) {
             </div>
           );
         })}
-        <div style={{ marginTop: 'auto', paddingTop: 12 }}>
+        <div className="sidebar-footer">
           <button className="nav-link" onClick={logout}><LogOut size={16} /> Sign out</button>
         </div>
       </aside>
