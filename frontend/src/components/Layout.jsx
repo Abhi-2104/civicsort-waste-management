@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import {
   LayoutDashboard, ClipboardList, CheckSquare, Building2, Tags, Users,
@@ -32,6 +32,7 @@ function initials(name) {
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [pendingCount, setPendingCount] = useState(0);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
@@ -43,7 +44,7 @@ export default function Layout({ children }) {
       const p = res.data.find(n => n.type === 'Pending Approval');
       setPendingCount(p ? p.count : 0);
     }).catch(() => {});
-  }, []);
+  }, [location.pathname]);
 
   useEffect(() => {
     function onClick(e) { if (boxRef.current && !boxRef.current.contains(e.target)) setShowResults(false); }
