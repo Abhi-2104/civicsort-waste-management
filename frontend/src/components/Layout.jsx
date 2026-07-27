@@ -2,7 +2,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import {
   LayoutDashboard, ClipboardList, CheckSquare, Building2, Tags, Users,
-  FileBarChart, UploadCloud, ScrollText, LogOut, Search, Bell, Trash2
+  FileBarChart, UploadCloud, ScrollText, LogOut, Search, Bell, Trash2, Menu, X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
@@ -36,6 +36,7 @@ export default function Layout({ children }) {
   const [pendingCount, setPendingCount] = useState(0);
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
   const [showResults, setShowResults] = useState(false);
@@ -49,6 +50,9 @@ export default function Layout({ children }) {
       setPendingCount(p ? p.count : 0);
     }).catch(() => {});
   }, [location.pathname]);
+
+  // Close sidebar on route change (mobile)
+  useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
 
   useEffect(() => {
     function onClick(e) {
@@ -72,7 +76,10 @@ export default function Layout({ children }) {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      {/* Mobile backdrop */}
+      {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
+
+      <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
         <div className="sidebar-brand">
           <div className="mark"><Trash2 size={16} /></div>
           <div>
@@ -104,6 +111,11 @@ export default function Layout({ children }) {
 
       <div className="main-area">
         <div className="topbar">
+          {/* Hamburger — visible only on mobile via CSS */}
+          <button className="sidebar-toggle" onClick={() => setSidebarOpen(p => !p)} aria-label="Toggle menu">
+            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+
           <div className="search-box" ref={boxRef} style={{ position: 'relative' }}>
             <Search size={15} color="var(--ink-soft)" />
             <input
@@ -181,7 +193,7 @@ export default function Layout({ children }) {
             <div className="user-chip">
               <div className="avatar">{initials(user.name)}</div>
               <div>
-                <div>{user.name}</div>
+                <div className="user-name">{user.name}</div>
                 <div className="role-pill">{user.role}</div>
               </div>
             </div>
