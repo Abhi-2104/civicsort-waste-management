@@ -34,20 +34,27 @@ export default function Layout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [pendingCount, setPendingCount] = useState(0);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
   const [showResults, setShowResults] = useState(false);
   const boxRef = useRef(null);
+  const notifRef = useRef(null);
 
   useEffect(() => {
     api.get('/dashboard/notifications').then(res => {
+      setNotifications(res.data || []);
       const p = res.data.find(n => n.type === 'Pending Approval');
       setPendingCount(p ? p.count : 0);
     }).catch(() => {});
   }, [location.pathname]);
 
   useEffect(() => {
-    function onClick(e) { if (boxRef.current && !boxRef.current.contains(e.target)) setShowResults(false); }
+    function onClick(e) {
+      if (boxRef.current && !boxRef.current.contains(e.target)) setShowResults(false);
+      if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotifications(false);
+    }
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
@@ -132,10 +139,43 @@ export default function Layout({ children }) {
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-            <div style={{ position: 'relative' }}>
-              <Bell size={17} color="var(--ink-soft)" />
-              {pendingCount > 0 && (
-                <span style={{ position: 'absolute', top: -4, right: -4, width: 8, height: 8, borderRadius: '50%', background: 'var(--penalty)' }} />
+            <div style={{ position: 'relative' }} ref={notifRef}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ padding: 6, position: 'relative', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                onClick={() => setShowNotifications(p => !p)}
+                title="Notifications"
+              >
+                <Bell size={17} color="var(--ink-soft)" />
+                {notifications.length > 0 && (
+                  <span style={{ position: 'absolute', top: 2, right: 2, width: 8, height: 8, borderRadius: '50%', background: 'var(--penalty)' }} />
+                )}
+              </button>
+              {showNotifications && (
+                <div className="card" style={{ position: 'absolute', top: 38, right: 0, width: 280, zIndex: 30, padding: '10px 12px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, borderBottom: '1px solid var(--line)', paddingBottom: 6 }}>
+                    Notifications
+                  </div>
+                  {notifications.length === 0 ? (
+                    <div style={{ fontSize: 12.5, color: 'var(--ink-soft)', padding: '6px 0' }}>No active notifications.</div>
+                  ) : (
+                    notifications.map((n, idx) => (
+                      <div
+                        key={idx}
+                        style={{ padding: '8px 6px', cursor: 'pointer', borderRadius: 6, fontSize: 12.5, transition: 'background 0.15s' }}
+                        className="nav-link"
+                        onClick={() => {
+                          setShowNotifications(false);
+                          if (n.type === 'Pending Approval') navigate('/approvals');
+                          else if (n.type === 'Unpaid Penalty') navigate('/reports');
+                        }}
+                      >
+                        <b>{n.type}:</b> {n.message}
+                      </div>
+                    ))
+                  )}
+                </div>
               )}
             </div>
             <div className="user-chip">
