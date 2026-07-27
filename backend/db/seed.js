@@ -81,26 +81,6 @@ insertTpl.run(communityId, 'Email', 'Penalty',
   'Waste Disposal Penalty - Flat {{flat_number}}',
   'Dear {{resident_name}}, a penalty of Rs.{{penalty_amount}} (Penalty No. {{penalty_number}}) has been levied for {{category_name}} recorded on {{date}} at Flat {{flat_number}}. Remarks: {{remarks}}.');
 
-// Sample multi-level incidents (Community / Block / Floor) so the new
-// hierarchy has something to show immediately after seeding. Flat-level
-// incidents are still created interactively through the app, as before.
-const makerId = db.prepare(`SELECT id FROM users WHERE email='maker@demo.com'`).get().id;
-const mixedWasteCatId = catId('Mixed Waste Disposal');
-const blockA = blocks.find(b => b.name === 'Block A');
-
-const insertIncident = db.prepare(`INSERT OR IGNORE INTO incidents
-  (incident_number, community_id, incident_level, block_id, floor, flat_id, category_id,
-   incident_date, incident_time, remarks, maker_id, status)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Approval')`);
-
-const seedIncidentDate = today;
-insertIncident.run('INC-DEMO-COMMUNITY-1', communityId, 'Community', null, null, null, mixedWasteCatId,
-  seedIncidentDate, '09:00', 'Garbage dumped near the clubhouse entrance overnight.', makerId);
-insertIncident.run('INC-DEMO-BLOCK-1', communityId, 'Block', blockA.id, null, null, mixedWasteCatId,
-  seedIncidentDate, '10:15', 'Waste bags left in Block A lobby, not collected.', makerId);
-insertIncident.run('INC-DEMO-FLOOR-1', communityId, 'Floor', blockA.id, '2', null, mixedWasteCatId,
-  seedIncidentDate, '11:30', 'Mixed waste found in the Floor 2 corridor of Block A.', makerId);
-
 console.log('Seed complete.');
 console.log('Login users (password: password123):');
 console.log(' Admin:      admin@demo.com');

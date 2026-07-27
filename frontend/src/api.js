@@ -24,6 +24,9 @@ api.interceptors.response.use(
 
 export function photoUrl(path) {
   if (!path) return '';
+  // Drive photos are already absolute URLs (https://drive.google.com/...)
+  // Local fallback photos are relative paths (/uploads/...)
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
   return `${API_BASE}${path}`;
 }
 
