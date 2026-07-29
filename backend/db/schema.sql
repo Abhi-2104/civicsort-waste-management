@@ -157,9 +157,15 @@ CREATE TABLE IF NOT EXISTS communication_templates (
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER REFERENCES users(id),
-  action TEXT NOT NULL,       -- LOGIN, LOGOUT, CREATE, UPDATE, APPROVE, REJECT, DELETE
+  user_name TEXT,                -- denormalized for immutability
+  user_role TEXT,                -- denormalized for immutability
+  action TEXT NOT NULL,          -- LOGIN, LOGOUT, CREATE, UPDATE, APPROVE, REJECT, DELETE, DEACTIVATE
   entity_type TEXT,
   entity_id INTEGER,
+  module TEXT,                   -- community, flat, block, incident, etc.
+  old_values TEXT,               -- JSON snapshot before change
+  new_values TEXT,               -- JSON snapshot after change
+  action_type TEXT,              -- normalized: CREATE, EDIT, DELETE, DEACTIVATE
   details TEXT,
   ip_address TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))

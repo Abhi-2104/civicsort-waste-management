@@ -28,8 +28,20 @@ export function authorize(...allowedRoles) {
   };
 }
 
-export function writeAudit({ userId, action, entityType, entityId, details, ip }) {
-  db.prepare(`INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
-    VALUES (?, ?, ?, ?, ?, ?)`).run(userId || null, action, entityType || null, entityId || null,
-    details ? JSON.stringify(details) : null, ip || null);
+export function writeAudit({ userId, userName, userRole, action, entityType, entityId, module, oldValues, newValues, actionType, details, ip }) {
+  db.prepare(`INSERT INTO audit_log (user_id, user_name, user_role, action, entity_type, entity_id, module, old_values, new_values, action_type, details, ip_address)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    userId || null,
+    userName || null,
+    userRole || null,
+    action,
+    entityType || null,
+    entityId || null,
+    module || null,
+    oldValues ? JSON.stringify(oldValues) : null,
+    newValues ? JSON.stringify(newValues) : null,
+    actionType || null,
+    details ? (typeof details === 'string' ? details : JSON.stringify(details)) : null,
+    ip || null
+  );
 }

@@ -79,6 +79,52 @@ function migrate() {
 
 migrate();
 
+// V2 migration: soft-delete framework + enhanced audit logging (Enhancements 17 & 18)
+function migrate_v2() {
+  // --- Soft-delete columns on master tables ---
+  const softDeleteTables = ['communities', 'blocks', 'flats'];
+  for (const table of softDeleteTables) {
+    if (!columnExists(table, 'is_deleted')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;`);
+    }
+    if (!columnExists(table, 'deleted_by')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN deleted_by INTEGER;`);
+    }
+    if (!columnExists(table, 'deleted_at')) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN deleted_at TEXT;`);
+    }
+  }
+
+  // Mobile number on communities (Enhancement 14)
+  if (!columnExists('communities', 'mobile_number')) {
+    db.exec(`ALTER TABLE communities ADD COLUMN mobile_number TEXT;`);
+  }
+
+  // --- Enhanced audit_log columns (Enhancement 18) ---
+  if (!columnExists('audit_log', 'user_name')) {
+    db.exec(`ALTER TABLE audit_log ADD COLUMN user_name TEXT;`);
+  }
+  if (!columnExists('audit_log', 'user_role')) {
+    db.exec(`ALTER TABLE audit_log ADD COLUMN user_role TEXT;`);
+  }
+  if (!columnExists('audit_log', 'module')) {
+    db.exec(`ALTER TABLE audit_log ADD COLUMN module TEXT;`);
+  }
+  if (!columnExists('audit_log', 'old_values')) {
+    db.exec(`ALTER TABLE audit_log ADD COLUMN old_values TEXT;`);
+  }
+  if (!columnExists('audit_log', 'new_values')) {
+    db.exec(`ALTER TABLE audit_log ADD COLUMN new_values TEXT;`);
+  }
+  if (!columnExists('audit_log', 'action_type')) {
+    db.exec(`ALTER TABLE audit_log ADD COLUMN action_type TEXT;`);
+  }
+
+  console.log('[migrate_v2] Soft-delete framework and enhanced audit logging ready.');
+}
+
+migrate_v2();
+
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_incidents_flat ON incidents(flat_id);
   CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
@@ -86,6 +132,12 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_incidents_level ON incidents(incident_level);
   CREATE INDEX IF NOT EXISTS idx_flats_block ON flats(block_id);
   CREATE INDEX IF NOT EXISTS idx_penalties_flat ON penalties(flat_id);
+  CREATE INDEX IF NOT EXISTS idx_communities_active ON communities(is_active, is_deleted);
+  CREATE INDEX IF NOT EXISTS idx_blocks_active ON blocks(is_active, is_deleted);
+  CREATE INDEX IF NOT EXISTS idx_flats_active ON flats(is_active, is_deleted);
+  CREATE INDEX IF NOT EXISTS idx_flats_community ON flats(community_id);
+  CREATE INDEX IF NOT EXISTS idx_warnings_flat ON warnings(flat_id);
+  CREATE INDEX IF NOT EXISTS idx_comm_log_flat ON communication_log(flat_id);
 `);
 
 export function nextSequence(prefix, table, column) {
